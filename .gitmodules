@@ -1,3 +1,6 @@
 [submodule "TransportationNetworks"]
 	path = TransportationNetworks
 	url = git@github.com:bstabler/TransportationNetworks.git
+[submodule "anuga_core"]
+	path = anuga_core
+	url = git@github.com:GeoscienceAustralia/anuga_core.git

@@ -102,7 +102,7 @@ def loadNodePos():
     return node2pos
 
 
-def drawImg(ts, net_data, node2pos):
+def getEffectedRoads(ts, net_data, node2pos, anuha_pkl, img=False):
     top_offset = (0, 0)
     top_scale = (1, 1)
     road_offset = (0.05, 0.1)
@@ -110,11 +110,9 @@ def drawImg(ts, net_data, node2pos):
     # top_offset = (0.05, 0)
     # top_scale = (1, 1)
 
-    with open(ANUGA_DATA, 'rb') as file:
-        data = pickle.load(file, encoding='bytes')
 
-    [lon, lat, z] = data[b'topo_data']
-    flooded_centroids = data[b'wcs'][ts]
+    [lon, lat, z] = anuha_pkl[b'topo_data']
+    flooded_centroids = anuha_pkl[b'wcs'][ts]
 
     hull = ConvexHull(flooded_centroids)
     flood_extent = flooded_centroids[hull.vertices,:]
@@ -137,17 +135,19 @@ def drawImg(ts, net_data, node2pos):
     print("Top. Mins", top_mins)
     print("Top. Diff", top_diffs)
 
-    height_min = min(z)
-    height_max = max(z)
-    height_diff = height_max - height_min
-    print("Height Min:", height_min)
-    print("Height Max:", height_diff)
+    if img:
+        height_min = min(z)
+        height_max = max(z)
+        height_diff = height_max - height_min
+        print("Height Min:", height_min)
+        print("Height Max:", height_diff)
 
     img_size = (1500, 1000)
     print("Img Size:", img_size)
 
-    im = Image.new('RGBA', img_size, (255, 255, 255, 255))
-    draw = ImageDraw.Draw(im)
+    if img:
+        im = Image.new('RGBA', img_size, (255, 255, 255, 255))
+        draw = ImageDraw.Draw(im)
 
     def scale(pt, mins, diffs):
         return [(i-m)/d for i,m,d in zip(pt, mins, diffs)]
@@ -172,45 +172,47 @@ def drawImg(ts, net_data, node2pos):
         i_pt[1] = img_size[1] - i_pt[1]
         return tuple(i_pt)
 
-    # topology data in image space
-    img_top_data = np.zeros((len(lon), 3))
-    for i, (x, y, z) in enumerate(zip(lon, lat, z)):
-        x, y = topPt2Img((x,y))
-        img_top_data[i] = (x, y, z)
+    if img:
+        # topology data in image space
+        img_top_data = np.zeros((len(lon), 3))
+        for i, (x, y, z) in enumerate(zip(lon, lat, z)):
+            x, y = topPt2Img((x,y))
+            img_top_data[i] = (x, y, z)
 
-    img_grid = np.zeros((img_size[0]*img_size[1], 2))
-    it = 0
-    for i in range(img_size[0]):
-        for j in range(img_size[1]):
-            img_grid[it][0] = i
-            img_grid[it][1 ]= j
-            it += 1
+        img_grid = np.zeros((img_size[0]*img_size[1], 2))
+        it = 0
+        for i in range(img_size[0]):
+            for j in range(img_size[1]):
+                img_grid[it][0] = i
+                img_grid[it][1 ]= j
+                it += 1
 
-    interpolated_top = griddata(img_top_data[:, :2],
-                                img_top_data[:, 2],
-                                img_grid,
-                                method="linear")
+        interpolated_top = griddata(img_top_data[:, :2],
+                                    img_top_data[:, 2],
+                                    img_grid,
+                                    method="linear")
 
-    # print("Drawing Topology")
-    # for (x, y), t in zip(img_grid, interpolated_top):
-        # # brown ground color
-        # start_h = 245 # green
-        # end_h = 0 # brown
-        # h_diff = end_h - start_h
+        print("Drawing Topology")
+        for (x, y), t in zip(img_grid, interpolated_top):
+            # brown ground color
+            start_h = 245 # green
+            end_h = 0 # brown
+            h_diff = end_h - start_h
 
-        # dist2max = height_max - t
-        # percent = 1 - (dist2max / height_diff)
-        # h = int(start_h + percent * h_diff)
+            dist2max = height_max - t
+            percent = 1 - (dist2max / height_diff)
+            h = int(start_h + percent * h_diff)
 
-        # color = tuple(int(x*255) for x in
-                      # hsv_to_rgb(h/255, 65/255, 59/255) + (0,))
+            color = tuple(int(x*255) for x in
+                          hsv_to_rgb(h/255, 65/255, 59/255) + (0,))
 
-        # draw.point((x, y), color)
+            draw.point((x, y), color)
 
     # draw flooding
-    print("Draw flooding")
     img_extent = [topPt2Img(pt) for pt in flood_extent]
-    draw.polygon(img_extent, fill=(0,0,255,0))
+    if img:
+        print("Draw flooding")
+        draw.polygon(img_extent, fill=(0,0,255,0))
 
     # draw edges
     dell = Delaunay(img_extent)
@@ -223,9 +225,11 @@ def drawImg(ts, net_data, node2pos):
             effected_edges.append((a, b))
         else:
             color = (0, 0, 0, 0)
-        draw.line(pt_a + pt_b, fill=color, width=2)
+        if img:
+            draw.line(pt_a + pt_b, fill=color, width=2)
 
-    im.show()
+    if img:
+        im.show()
     return effected_edges
 
 
@@ -276,30 +280,34 @@ def getAvgTravelTime(net_data, flows):
             print(dl)
             break
         c += len(dl) - len(deleted) - 1
-    print(s / c)
-    print(diam)
+    return ((s / c), diam)
 
-    # print("getting diam.")
-    # diam = nk.distance.Diameter(graph)
-    # diam.run()
-    # print(diam.getDiameter()[0])
 
 if __name__=="__main__":
+    make_img = False
+
+    with open(ANUGA_DATA, 'rb') as file:
+        anuha_pkl = pickle.load(file, encoding='bytes')
 
     net_data = loadNetData()
     node2pos = loadNodePos()
     flows = loadFlows()
 
-    # getAvgTravelTime(net_data, flows)
+    times = []
+    # times.append(getAvgTravelTime(net_data, flows))
 
     ts = 0
-    eff_edges = drawImg(ts, net_data, node2pos)
+    max_ts = 99
+    for i in range(max_ts+1):
+        eff_edges = getEffectedRoads(ts, net_data, node2pos, anuha_pkl, make_img)
 
-    effected_net = deepcopy(net_data)
-    for e in eff_edges:
-        effected_net[e]["edge_cap"] *= 0.5
+        effected_net = deepcopy(net_data)
+        for e in eff_edges:
+            effected_net[e]["edge_cap"] *= 0.5
 
-    getAvgTravelTime(effected_net, flows)
+        times.append(getAvgTravelTime(effected_net, flows))
+
+    print(times)
 
 
 
@@ -313,7 +321,7 @@ if __name__=="__main__":
     # def callback():
         # top_off = (off_x.get(), off_y.get())
         # top_scale = (scale_x.get(), scale_y.get())
-        # drawImg(top_off, top_scale)
+        # getEffectedRoads(top_off, top_scale)
 
     # s1 = tk.Scale(top, from_=-1, to=1, resolution=0.01, variable=off_x)
     # s2 = tk.Scale(top, from_=-1, to=1, resolution=0.01, variable=off_y)

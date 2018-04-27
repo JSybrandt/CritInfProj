@@ -15,10 +15,11 @@ import tkinter as tk
 
 from PIL import Image, ImageDraw
 
-ANUGA_DATA = "../data/anuga_output.pkl"
+ANUGA_DATA = "../data/anuga_output_{}.pkl"
 NODE_POS_DATA = "../data/chicago-regional.nodes.csv"
 FLOW_DATA = "../TransportationNetworks/chicago-regional/ChicagoRegional_flow.txt"
 NET_DATA = "../TransportationNetworks/chicago-regional/ChicagoRegional_net.tntp"
+DATA_OUT = "../results/{}.pkl"
 
 
 def interact():
@@ -285,29 +286,35 @@ def getAvgTravelTime(net_data, flows):
 
 if __name__=="__main__":
     make_img = False
-
-    with open(ANUGA_DATA, 'rb') as file:
-        anuha_pkl = pickle.load(file, encoding='bytes')
-
+    write = True
     net_data = loadNetData()
     node2pos = loadNodePos()
     flows = loadFlows()
 
-    times = []
-    # times.append(getAvgTravelTime(net_data, flows))
+    trials = ['high', 'med3', 'low']
+    for trial in trials:
 
-    ts = 0
-    max_ts = 99
-    for i in range(max_ts+1):
-        eff_edges = getEffectedRoads(ts, net_data, node2pos, anuha_pkl, make_img)
+        with open(ANUGA_DATA.format(trial), 'rb') as file:
+            anuha_pkl = pickle.load(file, encoding='bytes')
 
-        effected_net = deepcopy(net_data)
-        for e in eff_edges:
-            effected_net[e]["edge_cap"] *= 0.5
 
-        times.append(getAvgTravelTime(effected_net, flows))
+        times = []
+        # times.append(getAvgTravelTime(net_data, flows))
 
-    print(times)
+        max_ts = 99
+        for i in range(max_ts+1):
+            print(i)
+            eff_edges = getEffectedRoads(i, net_data, node2pos, anuha_pkl, make_img)
+
+            effected_net = deepcopy(net_data)
+            for e in eff_edges:
+                effected_net[e]["edge_cap"] *= 0.5
+
+            times.append(getAvgTravelTime(effected_net, flows))
+
+        if write:
+            with open(DATA_OUT.format(trial), 'wb') as file:
+                pickle.dump(times, file)
 
 
 
